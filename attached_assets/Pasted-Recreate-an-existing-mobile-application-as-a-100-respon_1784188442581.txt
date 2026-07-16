@@ -1,0 +1,34 @@
+Recreate an existing mobile application as a 100% responsive, professional Next.js web application with a secure Supabase backend. The web interface must maintain a 1:1 visual match to the provided mobile design, featuring a dark-themed UI with specific green accents, clean typography, and a mobile-native layout constrained for desktop viewing.
+
+**Technical Stack:**
+* **Framework:** Next.js (App Router)
+* **Styling:** Tailwind CSS (Responsive utility-first)
+* **Database & Auth:** Supabase (PostgreSQL with RLS policies)
+* **Localization:** i18next with 20+ language support and auto-browser detection
+* **Deployment:** Vercel/Replit
+
+**Core Requirements:**
+
+1.  **Visual Parity:**
+    * Replicate the exact UI from the provided assets: color palette, spacing, and component hierarchy.
+    * Ensure a fluid, responsive experience that mimics the mobile-native feel on all screen sizes, centered within a desktop container.
+
+2.  **Advanced Localization:**
+    * Implement `i18next` for all textual content.
+    * Auto-detect browser language at runtime.
+    * Include a persistent, user-selectable language dropdown menu (supporting 20+ languages).
+
+3.  **Dynamic Admin Control Panel:**
+    * **Settings Management:** Dedicated admin interface to update global configuration variables (Payment URLs, Contact/Social links, API keys) stored in a Supabase `app_config` table.
+    * **User Management:** Dashboard to view registered users, toggle subscription levels (Pro/Pro Plus), and manage access permissions.
+    * **Post Scheduling:** Integrated CMS to create and schedule content. Use Supabase Edge Functions as a background worker to publish content at the designated `publish_at` timestamp.
+
+4.  **Security & Infrastructure:**
+    * **RBAC (Role-Based Access Control):** Use Supabase Auth with custom user metadata (e.g., `role: 'admin'`) to protect the `/admin` route structure.
+    * **Data Integrity:** Implement server-side validation for all betting tip inputs to ensure accuracy and prevent database errors.
+    * **Performance:** Use Next.js Server Components for high-performance data fetching and real-time updates via Supabase Realtime for live score/tip tracking.
+
+5.  **Features:**
+    * Public dashboard with real-time analytics.
+    * Interactive tip-unlock system.
+    * Detailed statistics visualization for "Correct Score" and "HT/FT" markets.
