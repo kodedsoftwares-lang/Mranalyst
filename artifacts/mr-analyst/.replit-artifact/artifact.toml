@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "Mr Analyst"
+version = "1.0.0"
+id = "artifacts/mr-analyst"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 19815
+
+[services.development]
+run = "pnpm --filter @workspace/mr-analyst run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/mr-analyst", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/mr-analyst/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19815"
+BASE_PATH = "/"

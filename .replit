@@ -1,4 +1,4 @@
-modules = ["nodejs-24"]
+modules = ["nodejs-24", "postgresql-16"]
 
 [deployment]
 router = "application"
@@ -18,3 +18,27 @@ expertMode = true
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 20000
+
+[userenv]
+
+[userenv.shared]
+SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZtbGRvYW1nb2dieG5wbmh0c3R6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQxNzk5MjUsImV4cCI6MjA5OTc1NTkyNX0.pKCyeK6KXDdCCoI2jHwlXSK-aGNAYjiIXBUwZn10Gts"
+SUPABASE_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZtbGRvYW1nb2dieG5wbmh0c3R6Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NDE3OTkyNSwiZXhwIjoyMDk5NzU1OTI1fQ.T7mb7YGLslGWbU2taJ2u3pvKBeAP1WWncUz67idEh1s"
+SUPABASE_URL = "https://vmldoamgogbxnpnhtstz.supabase.co"
+VITE_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZtbGRvYW1nb2dieG5wbmh0c3R6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQxNzk5MjUsImV4cCI6MjA5OTc1NTkyNX0.pKCyeK6KXDdCCoI2jHwlXSK-aGNAYjiIXBUwZn10Gts"
+VITE_SUPABASE_URL = "https://vmldoamgogbxnpnhtstz.supabase.co"
+
+[nix]
+channel = "stable-25_05"
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
+
+[[ports]]
+localPort = 8081
+externalPort = 8081
+
+[[ports]]
+localPort = 19815
+externalPort = 80

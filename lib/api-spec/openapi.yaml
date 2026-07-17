@@ -3,13 +3,23 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Mr Analyst API specification
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: tips
+    description: Betting tips
+  - name: stats
+    description: Statistics
+  - name: admin
+    description: Admin operations
+  - name: live
+    description: Live chat
+  - name: auth
+    description: Authentication
 paths:
   /healthz:
     get:
@@ -24,6 +34,331 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /tips:
+    get:
+      operationId: getTips
+      tags: [tips]
+      summary: Get published tips
+      parameters:
+        - name: tier
+          in: query
+          schema:
+            type: string
+            enum: [pro_plus, pro]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of tips
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Tip"
+
+  /stats:
+    get:
+      operationId: getStats
+      tags: [stats]
+      summary: Get statistics for both VIP tiers
+      responses:
+        "200":
+          description: Stats for both tiers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Stats"
+
+  /auth/vip-login:
+    post:
+      operationId: vipLogin
+      tags: [auth]
+      summary: VIP login with email and access code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VipLoginInput"
+      responses:
+        "200":
+          description: Login result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VipLoginResult"
+
+  /live/messages:
+    get:
+      operationId: getLiveMessages
+      tags: [live]
+      summary: Get live chat messages
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of live chat messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LiveMessage"
+    post:
+      operationId: sendLiveMessage
+      tags: [live]
+      summary: Send a live chat message
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LiveMessageInput"
+      responses:
+        "201":
+          description: Created message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveMessage"
+
+  /admin/tips:
+    get:
+      operationId: adminGetTips
+      tags: [admin]
+      summary: Admin - get all tips
+      parameters:
+        - name: tier
+          in: query
+          schema:
+            type: string
+            enum: [pro_plus, pro]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: All tips
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Tip"
+    post:
+      operationId: adminCreateTip
+      tags: [admin]
+      summary: Admin - create a tip
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TipInput"
+      responses:
+        "201":
+          description: Created tip
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tip"
+
+  /admin/tips/{id}:
+    patch:
+      operationId: adminUpdateTip
+      tags: [admin]
+      summary: Admin - update a tip
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TipUpdate"
+      responses:
+        "200":
+          description: Updated tip
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tip"
+    delete:
+      operationId: adminDeleteTip
+      tags: [admin]
+      summary: Admin - delete a tip
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+
+  /admin/users:
+    get:
+      operationId: adminGetUsers
+      tags: [admin]
+      summary: Admin - get all users
+      responses:
+        "200":
+          description: All users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+
+  /admin/users/{id}:
+    patch:
+      operationId: adminUpdateUser
+      tags: [admin]
+      summary: Admin - update user subscription/role
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserUpdate"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /admin/config:
+    get:
+      operationId: adminGetConfig
+      tags: [admin]
+      summary: Admin - get all app config entries
+      responses:
+        "200":
+          description: App config list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AppConfig"
+    put:
+      operationId: adminUpdateConfig
+      tags: [admin]
+      summary: Admin - update a config entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AppConfigUpdate"
+      responses:
+        "200":
+          description: Updated config entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppConfig"
+
+  /admin/scheduled-posts:
+    get:
+      operationId: adminGetScheduledPosts
+      tags: [admin]
+      summary: Admin - get scheduled posts
+      responses:
+        "200":
+          description: Scheduled posts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ScheduledPost"
+    post:
+      operationId: adminCreateScheduledPost
+      tags: [admin]
+      summary: Admin - create a scheduled post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScheduledPostInput"
+      responses:
+        "201":
+          description: Created scheduled post
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduledPost"
+
+  /admin/scheduled-posts/{id}:
+    patch:
+      operationId: adminUpdateScheduledPost
+      tags: [admin]
+      summary: Admin - update a scheduled post
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScheduledPostUpdate"
+      responses:
+        "200":
+          description: Updated scheduled post
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduledPost"
+    delete:
+      operationId: adminDeleteScheduledPost
+      tags: [admin]
+      summary: Admin - delete a scheduled post
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +369,310 @@ components:
       required:
         - status
 
+    Tip:
+      type: object
+      properties:
+        id:
+          type: string
+        tier:
+          type: string
+          enum: [pro_plus, pro]
+        teams:
+          type: ["string", "null"]
+        tip_type:
+          type: ["string", "null"]
+        odds:
+          type: ["number", "null"]
+        status:
+          type: string
+          enum: [locked, pending, won, lost, postponed, cancelled]
+        match_date:
+          type: ["string", "null"]
+        match_time:
+          type: ["string", "null"]
+        publish_at:
+          type: ["string", "null"]
+        is_locked:
+          type: boolean
+        created_at:
+          type: string
+      required:
+        - id
+        - tier
+        - status
+        - is_locked
+        - created_at
+
+    TipInput:
+      type: object
+      properties:
+        tier:
+          type: string
+          enum: [pro_plus, pro]
+        teams:
+          type: string
+        tip_type:
+          type: string
+        odds:
+          type: number
+        status:
+          type: string
+          enum: [locked, pending, won, lost, postponed, cancelled]
+        match_date:
+          type: string
+        match_time:
+          type: string
+        publish_at:
+          type: string
+      required:
+        - tier
+        - status
+
+    TipUpdate:
+      type: object
+      properties:
+        tier:
+          type: string
+          enum: [pro_plus, pro]
+        teams:
+          type: string
+        tip_type:
+          type: string
+        odds:
+          type: number
+        status:
+          type: string
+          enum: [locked, pending, won, lost, postponed, cancelled]
+        match_date:
+          type: string
+        match_time:
+          type: string
+        publish_at:
+          type: string
+
+    Stats:
+      type: object
+      properties:
+        pro_plus:
+          $ref: "#/components/schemas/TierStats"
+        pro:
+          $ref: "#/components/schemas/TierStats"
+      required:
+        - pro_plus
+        - pro
+
+    TierStats:
+      type: object
+      properties:
+        total:
+          type: integer
+        won:
+          type: integer
+        lost:
+          type: integer
+        pending:
+          type: integer
+        postponed:
+          type: integer
+        cancelled:
+          type: integer
+        win_rate:
+          type: number
+        todays_tips:
+          type: integer
+      required:
+        - total
+        - won
+        - lost
+        - pending
+        - postponed
+        - cancelled
+        - win_rate
+        - todays_tips
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        subscription:
+          type: ["string", "null"]
+        created_at:
+          type: string
+        last_sign_in_at:
+          type: ["string", "null"]
+        is_admin:
+          type: boolean
+      required:
+        - id
+        - email
+        - created_at
+        - is_admin
+
+    UserUpdate:
+      type: object
+      properties:
+        subscription:
+          type: ["string", "null"]
+        is_admin:
+          type: boolean
+
+    AppConfig:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+        description:
+          type: ["string", "null"]
+        updated_at:
+          type: string
+      required:
+        - key
+        - value
+        - updated_at
+
+    AppConfigUpdate:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+      required:
+        - key
+        - value
+
+    LiveMessage:
+      type: object
+      properties:
+        id:
+          type: string
+        user_name:
+          type: string
+        user_city:
+          type: ["string", "null"]
+        message:
+          type: string
+        tier:
+          type: string
+          enum: [pro_plus, pro]
+        created_at:
+          type: string
+      required:
+        - id
+        - user_name
+        - message
+        - tier
+        - created_at
+
+    LiveMessageInput:
+      type: object
+      properties:
+        user_name:
+          type: string
+        user_city:
+          type: string
+        message:
+          type: string
+        tier:
+          type: string
+          enum: [pro_plus, pro]
+      required:
+        - user_name
+        - message
+        - tier
+
+    VipLoginInput:
+      type: object
+      properties:
+        email:
+          type: string
+        access_code:
+          type: string
+        tier:
+          type: string
+          enum: [pro_plus, pro]
+      required:
+        - email
+        - access_code
+
+    VipLoginResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        tier:
+          type: ["string", "null"]
+        message:
+          type: string
+        token:
+          type: ["string", "null"]
+      required:
+        - success
+        - message
+
+    ScheduledPost:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        content:
+          type: string
+        tier:
+          type: string
+          enum: [pro_plus, pro]
+        publish_at:
+          type: string
+        status:
+          type: string
+          enum: [scheduled, published, cancelled]
+        created_at:
+          type: string
+      required:
+        - id
+        - title
+        - content
+        - tier
+        - publish_at
+        - status
+        - created_at
+
+    ScheduledPostInput:
+      type: object
+      properties:
+        title:
+          type: string
+        content:
+          type: string
+        tier:
+          type: string
+          enum: [pro_plus, pro]
+        publish_at:
+          type: string
+      required:
+        - title
+        - content
+        - tier
+        - publish_at
+
+    ScheduledPostUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+        content:
+          type: string
+        tier:
+          type: string
+          enum: [pro_plus, pro]
+        publish_at:
+          type: string
+        status:
+          type: string
+          enum: [scheduled, published, cancelled]
