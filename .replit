@@ -27,6 +27,7 @@ SUPABASE_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdX
 SUPABASE_URL = "https://vmldoamgogbxnpnhtstz.supabase.co"
 VITE_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZtbGRvYW1nb2dieG5wbmh0c3R6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQxNzk5MjUsImV4cCI6MjA5OTc1NTkyNX0.pKCyeK6KXDdCCoI2jHwlXSK-aGNAYjiIXBUwZn10Gts"
 VITE_SUPABASE_URL = "https://vmldoamgogbxnpnhtstz.supabase.co"
+ADMIN_EMAIL = "Mranalystvip@hotmail.com"
 
 [nix]
 channel = "stable-25_05"
