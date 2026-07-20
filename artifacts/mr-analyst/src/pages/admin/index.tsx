@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -22,7 +22,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
-import { ArrowLeft, Trash2, Pencil, Plus, LogOut, Copy, Key, UserPlus, ShieldCheck, Eye, EyeOff } from "lucide-react";
+import { ArrowLeft, Trash2, Pencil, Plus, LogOut, Copy, Key, UserPlus, ShieldCheck, Eye, EyeOff, FileUp, ScanLine, Zap } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -271,9 +271,23 @@ function AccessCodesTab() {
   });
 
   const { mutate: generate, isPending: generating } = useMutation({
-    mutationFn: (data: CodeValues) => adminFetch("/admin/access-codes", { method: "POST", body: JSON.stringify({ ...data, expires_at: data.expires_at ? new Date(data.expires_at).toISOString() : null }) }).then(r => r.json()),
+    mutationFn: async (data: CodeValues) => {
+      const r = await adminFetch("/admin/access-codes", { method: "POST", body: JSON.stringify({ ...data, expires_at: data.expires_at ? new Date(data.expires_at).toISOString() : null }) });
+      if (!r.ok) { const e = await r.json().catch(() => ({})) as Record<string, unknown>; throw new Error((e.error as string) ?? "Failed"); }
+      return r.json();
+    },
     onSuccess: () => { toast({ title: "Code generated!" }); refetch(); setShowForm(false); codeForm.reset(); },
-    onError: () => toast({ title: "Failed to generate code", variant: "destructive" }),
+    onError: (e: Error) => toast({ title: e.message || "Failed to generate code", variant: "destructive" }),
+  });
+
+  const { mutate: quickGenerate, isPending: quickGenerating } = useMutation({
+    mutationFn: async (tier: "pro_plus" | "pro") => {
+      const r = await adminFetch("/admin/access-codes", { method: "POST", body: JSON.stringify({ tier, expires_at: null, label: null }) });
+      if (!r.ok) { const e = await r.json().catch(() => ({})) as Record<string, unknown>; throw new Error((e.error as string) ?? "Failed"); }
+      return r.json() as Promise<{ code: string }>;
+    },
+    onSuccess: (data) => { toast({ title: `Generated: ${data.code}` }); refetch(); },
+    onError: (e: Error) => toast({ title: e.message || "Failed", variant: "destructive" }),
   });
 
   const { mutate: deactivate } = useMutation({
@@ -299,11 +313,21 @@ function AccessCodesTab() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "6px" }}>
         <span style={{ fontWeight: 700, color: "#fff" }}>Access Codes ({codeList.length})</span>
-        <Button size="sm" onClick={() => setShowForm(!showForm)} style={{ background: "#a8ff4d", color: "#000" }}>
-          <Key size={14} style={{ marginRight: "4px" }} /> Generate Code
-        </Button>
+        <div style={{ display: "flex", gap: "6px" }}>
+          <Button size="sm" onClick={() => quickGenerate("pro_plus")} disabled={quickGenerating}
+            style={{ background: "#1a2a0a", border: "1px solid #a8ff4d", color: "#a8ff4d", fontSize: "11px" }}>
+            <Zap size={12} style={{ marginRight: "3px" }} /> Quick Pro+
+          </Button>
+          <Button size="sm" onClick={() => quickGenerate("pro")} disabled={quickGenerating}
+            style={{ background: "#0a1a0a", border: "1px solid #22c55e", color: "#22c55e", fontSize: "11px" }}>
+            <Zap size={12} style={{ marginRight: "3px" }} /> Quick Pro
+          </Button>
+          <Button size="sm" onClick={() => setShowForm(!showForm)} style={{ background: "#a8ff4d", color: "#000" }}>
+            <Key size={14} style={{ marginRight: "4px" }} /> Custom
+          </Button>
+        </div>
       </div>
 
       <div style={{ background: "#0a1a0a", border: "1px solid #1a3a1a", borderRadius: "10px", padding: "10px 12px", fontSize: "11px", color: "#88cc88" }}>
@@ -535,6 +559,323 @@ function UsersTab() {
   );
 }
 
+// ─── Import Tab ───────────────────────────────────────────────────────────────
+
+function ImportTab() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // CSV state
+  const [csvText, setCsvText] = useState("");
+  const [csvTier, setCsvTier] = useState<"pro_plus" | "pro">("pro_plus");
+  const [csvStatus, setCsvStatus] = useState("pending");
+  const [csvParsed, setCsvParsed] = useState<Record<string, string>[]>([]);
+  const [csvImporting, setCsvImporting] = useState(false);
+  const [csvResult, setCsvResult] = useState<{ inserted: number; failed: number } | null>(null);
+  const csvFileRef = useRef<HTMLInputElement>(null);
+
+  // Betslip state
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageBase64, setImageBase64] = useState<string | null>(null);
+  const [imageMime, setImageMime] = useState("image/jpeg");
+  const [scanning, setScanning] = useState(false);
+  const [scanMatches, setScanMatches] = useState<Record<string, string>[]>([]);
+  const [addingIdx, setAddingIdx] = useState<number | null>(null);
+  const betslipFileRef = useRef<HTMLInputElement>(null);
+
+  const parseCSV = (text: string): Record<string, string>[] => {
+    const lines = text.trim().split(/\r?\n/).filter(Boolean);
+    if (lines.length < 2) return [];
+    const headers = lines[0].split(",").map(h => h.trim().toLowerCase());
+    return lines.slice(1).map(line => {
+      const vals = line.split(",").map(v => v.trim());
+      const obj: Record<string, string> = {};
+      headers.forEach((h, i) => { obj[h] = vals[i] ?? ""; });
+      return obj;
+    });
+  };
+
+  const handleCSVFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      setCsvText(text);
+      setCsvParsed(parseCSV(text));
+    };
+    reader.readAsText(file);
+  };
+
+  const handleCSVText = (text: string) => {
+    setCsvText(text);
+    setCsvParsed(parseCSV(text));
+  };
+
+  const doImportCSV = async () => {
+    if (csvParsed.length === 0) return;
+    setCsvImporting(true);
+    setCsvResult(null);
+    try {
+      const resp = await adminFetch("/admin/tips/import-bulk", {
+        method: "POST",
+        body: JSON.stringify({ tier: csvTier, status: csvStatus, tips: csvParsed }),
+      });
+      if (!resp.ok) throw new Error("Import failed");
+      const data = await resp.json() as { inserted: number; failed: number };
+      setCsvResult({ inserted: data.inserted, failed: data.failed });
+      toast({ title: `Imported ${data.inserted} tip${data.inserted !== 1 ? "s" : ""}${data.failed ? `, ${data.failed} failed` : ""}` });
+      queryClient.invalidateQueries({ queryKey: getAdminGetTipsQueryKey({}) });
+    } catch {
+      toast({ title: "Import failed", variant: "destructive" });
+    } finally {
+      setCsvImporting(false);
+    }
+  };
+
+  const handleBetslipFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImageMime(file.type || "image/jpeg");
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const result = ev.target?.result as string;
+      setImagePreview(result);
+      setImageBase64(result.split(",")[1] ?? result);
+      setScanMatches([]);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const doScan = async () => {
+    if (!imageBase64) return;
+    setScanning(true);
+    setScanMatches([]);
+    try {
+      const resp = await adminFetch("/admin/tips/scan-betslip", {
+        method: "POST",
+        body: JSON.stringify({ image_base64: imageBase64, mime_type: imageMime }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({})) as Record<string, unknown>;
+        toast({ title: (err.error as string) ?? "Scan failed", variant: "destructive" });
+        return;
+      }
+      const data = await resp.json() as { matches: Record<string, string>[] };
+      const matches = (data.matches || []).map(m => ({ ...m, tier: "pro_plus", status: "pending" }));
+      setScanMatches(matches);
+      toast({ title: `Extracted ${matches.length} match(es)` });
+    } catch {
+      toast({ title: "Scan failed", variant: "destructive" });
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const updateMatch = (idx: number, key: string, val: string) =>
+    setScanMatches(prev => prev.map((m, i) => i === idx ? { ...m, [key]: val } : m));
+
+  const addScannedTip = async (match: Record<string, string>, idx: number) => {
+    setAddingIdx(idx);
+    try {
+      const resp = await adminFetch("/admin/tips", {
+        method: "POST",
+        body: JSON.stringify({
+          tier: match.tier ?? "pro_plus",
+          status: match.status ?? "pending",
+          teams: match.teams || undefined,
+          tip_type: match.tip_type || undefined,
+          odds: match.odds ? parseFloat(match.odds) : undefined,
+          match_date: match.match_date || undefined,
+          match_time: match.match_time || undefined,
+        }),
+      });
+      if (!resp.ok) throw new Error();
+      toast({ title: "Tip added!" });
+      queryClient.invalidateQueries({ queryKey: getAdminGetTipsQueryKey({}) });
+      setScanMatches(prev => prev.filter((_, i) => i !== idx));
+    } catch {
+      toast({ title: "Failed to add tip", variant: "destructive" });
+    } finally {
+      setAddingIdx(null);
+    }
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+      {/* ── CSV Import ── */}
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px" }}>
+          <FileUp size={16} color="#a8ff4d" />
+          <span style={{ fontWeight: 800, color: "#fff", fontSize: "14px" }}>CSV Import</span>
+          <span style={{ fontSize: "10px", color: "#555", background: "#1a1a1a", padding: "2px 8px", borderRadius: "20px" }}>bulk tips</span>
+        </div>
+
+        <div style={{ background: "#0a1a0a", border: "1px solid #1a3a1a", borderRadius: "10px", padding: "10px 12px", fontSize: "11px", color: "#88cc88", marginBottom: "10px" }}>
+          <strong>Format (first row = header):</strong><br />
+          <code style={{ color: "#a8ff4d" }}>teams,tip_type,odds,match_date,match_time</code><br />
+          <code style={{ color: "#888" }}>Arsenal vs Chelsea,Over 2.5,1.85,2026-07-20,15:00</code>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "8px" }}>
+          <div>
+            <p style={{ fontSize: "11px", color: "#888", marginBottom: "4px" }}>Default Tier</p>
+            <select value={csvTier} onChange={e => setCsvTier(e.target.value as "pro_plus" | "pro")}
+              style={{ width: "100%", background: "#111", border: "1px solid #333", color: "#fff", borderRadius: "8px", padding: "7px 8px", fontSize: "12px" }}>
+              <option value="pro_plus">Pro Plus VIP</option>
+              <option value="pro">Pro VIP</option>
+            </select>
+          </div>
+          <div>
+            <p style={{ fontSize: "11px", color: "#888", marginBottom: "4px" }}>Default Status</p>
+            <select value={csvStatus} onChange={e => setCsvStatus(e.target.value)}
+              style={{ width: "100%", background: "#111", border: "1px solid #333", color: "#fff", borderRadius: "8px", padding: "7px 8px", fontSize: "12px" }}>
+              <option value="pending">Pending</option>
+              <option value="locked">Locked</option>
+              <option value="won">Won</option>
+              <option value="lost">Lost</option>
+            </select>
+          </div>
+        </div>
+
+        <Button variant="outline" size="sm" onClick={() => csvFileRef.current?.click()} style={{ marginBottom: "8px", width: "100%", fontSize: "12px" }}>
+          <FileUp size={13} style={{ marginRight: "5px" }} /> Upload .csv file
+        </Button>
+        <input ref={csvFileRef} type="file" accept=".csv,text/csv" onChange={handleCSVFile} style={{ display: "none" }} />
+
+        <p style={{ fontSize: "11px", color: "#888", marginBottom: "4px" }}>Or paste CSV text:</p>
+        <textarea value={csvText} onChange={e => handleCSVText(e.target.value)} rows={5}
+          placeholder={"teams,tip_type,odds,match_date,match_time\nArsenal vs Chelsea,Over 2.5,1.85,2026-07-20,15:00"}
+          style={{ width: "100%", background: "#111", border: "1px solid #333", color: "#fff", borderRadius: "8px", padding: "8px", fontSize: "11px", fontFamily: "monospace", resize: "vertical", boxSizing: "border-box", marginBottom: "8px" }} />
+
+        {csvParsed.length > 0 && (
+          <div style={{ background: "#111", border: "1px solid #222", borderRadius: "10px", padding: "10px", marginBottom: "8px" }}>
+            <p style={{ fontSize: "11px", color: "#a8ff4d", marginBottom: "6px", fontWeight: 700 }}>{csvParsed.length} row(s) ready</p>
+            <div style={{ maxHeight: "140px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "3px" }}>
+              {csvParsed.slice(0, 15).map((row, i) => (
+                <div key={i} style={{ fontSize: "11px", color: "#ccc", background: "#0d0f0d", borderRadius: "6px", padding: "5px 8px" }}>
+                  <strong style={{ color: "#fff" }}>{row.teams || "—"}</strong>
+                  {row.tip_type && <span style={{ color: "#888", marginLeft: "6px" }}>{row.tip_type}</span>}
+                  {row.odds && <span style={{ color: "#a8ff4d", marginLeft: "6px" }}>@{row.odds}</span>}
+                  {row.match_date && <span style={{ color: "#555", marginLeft: "6px" }}>{row.match_date}</span>}
+                </div>
+              ))}
+              {csvParsed.length > 15 && <p style={{ fontSize: "10px", color: "#555", textAlign: "center" }}>…and {csvParsed.length - 15} more</p>}
+            </div>
+          </div>
+        )}
+
+        {csvResult && (
+          <div style={{ background: csvResult.failed > 0 ? "#1a0a0a" : "#0a1a0a", border: `1px solid ${csvResult.failed > 0 ? "#3a1a1a" : "#1a3a1a"}`, borderRadius: "8px", padding: "8px 12px", marginBottom: "8px", fontSize: "12px", color: csvResult.failed > 0 ? "#f87171" : "#a8ff4d" }}>
+            ✓ {csvResult.inserted} imported{csvResult.failed > 0 ? ` · ⚠ ${csvResult.failed} failed` : ""}
+          </div>
+        )}
+
+        <Button onClick={doImportCSV} disabled={csvParsed.length === 0 || csvImporting}
+          style={{ background: "#a8ff4d", color: "#000", fontWeight: 800, width: "100%" }}>
+          {csvImporting ? "Importing…" : `Import ${csvParsed.length || ""} Tip${csvParsed.length !== 1 ? "s" : ""}`}
+        </Button>
+      </div>
+
+      <div style={{ height: "1px", background: "#1a1a1a" }} />
+
+      {/* ── Betslip Scan ── */}
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px" }}>
+          <ScanLine size={16} color="#a8ff4d" />
+          <span style={{ fontWeight: 800, color: "#fff", fontSize: "14px" }}>Betslip / Ticket Scan</span>
+          <span style={{ fontSize: "10px", color: "#555", background: "#1a1a1a", padding: "2px 8px", borderRadius: "20px" }}>AI-powered</span>
+        </div>
+
+        <p style={{ fontSize: "11px", color: "#888", marginBottom: "8px" }}>
+          Upload a photo of a betting slip, ticket screenshot, or any image with match details. AI will extract all matches automatically.
+        </p>
+
+        <Button variant="outline" size="sm" onClick={() => betslipFileRef.current?.click()} style={{ marginBottom: "10px", width: "100%", fontSize: "12px" }}>
+          <FileUp size={13} style={{ marginRight: "5px" }} /> Upload betslip image
+        </Button>
+        <input ref={betslipFileRef} type="file" accept="image/*" onChange={handleBetslipFile} style={{ display: "none" }} />
+
+        {imagePreview && (
+          <div style={{ marginBottom: "10px" }}>
+            <img src={imagePreview} alt="Betslip" style={{ width: "100%", maxHeight: "240px", objectFit: "contain", borderRadius: "10px", border: "1px solid #333" }} />
+          </div>
+        )}
+
+        <Button onClick={doScan} disabled={!imageBase64 || scanning}
+          style={{ background: "#a8ff4d", color: "#000", fontWeight: 800, width: "100%", marginBottom: "12px" }}>
+          {scanning ? "Scanning with AI…" : "🔍 Scan & Extract Matches"}
+        </Button>
+
+        {scanMatches.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            <p style={{ fontSize: "12px", color: "#a8ff4d", fontWeight: 700 }}>
+              Found {scanMatches.length} match(es) — review fields then add:
+            </p>
+            {scanMatches.map((m, idx) => (
+              <div key={idx} style={{ background: "#111", border: "1px solid #2d3d2d", borderLeft: "3px solid #a8ff4d", borderRadius: "10px", padding: "12px" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                    <div>
+                      <p style={{ fontSize: "10px", color: "#666", marginBottom: "3px" }}>Tier</p>
+                      <select value={m.tier ?? "pro_plus"} onChange={e => updateMatch(idx, "tier", e.target.value)}
+                        style={{ width: "100%", background: "#0d0f0d", border: "1px solid #333", color: "#fff", borderRadius: "6px", padding: "5px", fontSize: "11px" }}>
+                        <option value="pro_plus">Pro Plus VIP</option>
+                        <option value="pro">Pro VIP</option>
+                      </select>
+                    </div>
+                    <div>
+                      <p style={{ fontSize: "10px", color: "#666", marginBottom: "3px" }}>Status</p>
+                      <select value={m.status ?? "pending"} onChange={e => updateMatch(idx, "status", e.target.value)}
+                        style={{ width: "100%", background: "#0d0f0d", border: "1px solid #333", color: "#fff", borderRadius: "6px", padding: "5px", fontSize: "11px" }}>
+                        <option value="pending">Pending</option>
+                        <option value="locked">Locked</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <p style={{ fontSize: "10px", color: "#666", marginBottom: "3px" }}>Teams</p>
+                    <input value={m.teams ?? ""} onChange={e => updateMatch(idx, "teams", e.target.value)}
+                      style={{ width: "100%", background: "#0d0f0d", border: "1px solid #333", color: "#fff", borderRadius: "6px", padding: "6px 8px", fontSize: "12px", boxSizing: "border-box" }} />
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "8px" }}>
+                    <div>
+                      <p style={{ fontSize: "10px", color: "#666", marginBottom: "3px" }}>Tip Type</p>
+                      <input value={m.tip_type ?? ""} onChange={e => updateMatch(idx, "tip_type", e.target.value)}
+                        style={{ width: "100%", background: "#0d0f0d", border: "1px solid #333", color: "#fff", borderRadius: "6px", padding: "6px 8px", fontSize: "12px", boxSizing: "border-box" }} />
+                    </div>
+                    <div>
+                      <p style={{ fontSize: "10px", color: "#666", marginBottom: "3px" }}>Odds</p>
+                      <input type="number" step="0.01" value={m.odds ?? ""} onChange={e => updateMatch(idx, "odds", e.target.value)}
+                        style={{ width: "100%", background: "#0d0f0d", border: "1px solid #333", color: "#a8ff4d", borderRadius: "6px", padding: "6px 8px", fontSize: "12px", boxSizing: "border-box" }} />
+                    </div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                    <div>
+                      <p style={{ fontSize: "10px", color: "#666", marginBottom: "3px" }}>Date</p>
+                      <input type="date" value={m.match_date ?? ""} onChange={e => updateMatch(idx, "match_date", e.target.value)}
+                        style={{ width: "100%", background: "#0d0f0d", border: "1px solid #333", color: "#fff", borderRadius: "6px", padding: "6px 8px", fontSize: "12px", boxSizing: "border-box" }} />
+                    </div>
+                    <div>
+                      <p style={{ fontSize: "10px", color: "#666", marginBottom: "3px" }}>Time</p>
+                      <input type="time" value={m.match_time ?? ""} onChange={e => updateMatch(idx, "match_time", e.target.value)}
+                        style={{ width: "100%", background: "#0d0f0d", border: "1px solid #333", color: "#fff", borderRadius: "6px", padding: "6px 8px", fontSize: "12px", boxSizing: "border-box" }} />
+                    </div>
+                  </div>
+                  <Button onClick={() => addScannedTip(m, idx)} disabled={addingIdx === idx}
+                    style={{ background: "#a8ff4d", color: "#000", fontWeight: 800, fontSize: "12px" }}>
+                    {addingIdx === idx ? "Adding…" : "＋ Add as Tip"}
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Config Tab ───────────────────────────────────────────────────────────────
 
 const CONFIG_LABELS: Record<string, string> = {
@@ -546,6 +887,7 @@ const CONFIG_LABELS: Record<string, string> = {
   payment_link_pro: "💳 Payment Link — Pro VIP",
   pro_plus_price: "💰 Pro Plus VIP Price",
   pro_price: "💰 Pro VIP Price",
+  hero_bg_url: "🖼️ Home Background Image URL",
 };
 
 function ConfigTab() {
@@ -660,7 +1002,7 @@ function ScheduledTab() {
 
 // ─── Main Admin Page ──────────────────────────────────────────────────────────
 
-const TABS = ["Tips", "Codes", "Admins", "Users", "Config", "Scheduled"] as const;
+const TABS = ["Tips", "Import", "Codes", "Admins", "Users", "Config", "Scheduled"] as const;
 type Tab = typeof TABS[number];
 
 export default function AdminPage() {
@@ -729,6 +1071,7 @@ export default function AdminPage() {
       {/* Content */}
       <div style={{ padding: "16px" }}>
         {activeTab === "Tips" && <TipsTab />}
+        {activeTab === "Import" && <ImportTab />}
         {activeTab === "Codes" && <AccessCodesTab />}
         {activeTab === "Admins" && <AdminsTab />}
         {activeTab === "Users" && <UsersTab />}

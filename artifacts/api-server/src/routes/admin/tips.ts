@@ -125,4 +125,117 @@ router.delete("/:id", async (req: Request, res: Response): Promise<void> => {
   }
 });
 
+// POST /api/admin/tips/import-bulk  — bulk insert from CSV or betslip scan
+const bulkImportSchema = z.object({
+  tier: z.enum(["pro_plus", "pro"]).default("pro_plus"),
+  status: z.enum(["locked", "pending", "won", "lost", "postponed", "cancelled"]).default("pending"),
+  tips: z.array(z.object({
+    teams: z.string().optional(),
+    tip_type: z.string().optional(),
+    odds: z.union([z.number(), z.string()]).optional().transform((v) => {
+      if (v === undefined || v === null || v === "") return undefined;
+      const n = typeof v === "number" ? v : parseFloat(v as string);
+      return isNaN(n) ? undefined : n;
+    }),
+    match_date: z.string().optional(),
+    match_time: z.string().optional(),
+  })),
+});
+
+router.post("/import-bulk", async (req: Request, res: Response): Promise<void> => {
+  const parsed = bulkImportSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten().fieldErrors });
+    return;
+  }
+  const { tier, status, tips } = parsed.data;
+  const results: Array<{ ok: boolean; error?: string; teams?: string }> = [];
+
+  for (const t of tips) {
+    try {
+      await queryOne(
+        `INSERT INTO tips (tier, teams, tip_type, odds, status, match_date, match_time)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [tier, t.teams ?? null, t.tip_type ?? null, t.odds ?? null, status,
+         t.match_date || null, t.match_time || null],
+      );
+      results.push({ ok: true, teams: t.teams });
+    } catch (err) {
+      results.push({ ok: false, error: String(err), teams: t.teams });
+    }
+  }
+
+  const inserted = results.filter((r) => r.ok).length;
+  res.json({ inserted, failed: results.length - inserted, results });
+});
+
+// POST /api/admin/tips/scan-betslip  — AI-powered betslip image extraction
+router.post("/scan-betslip", async (req: Request, res: Response): Promise<void> => {
+  const { image_base64, mime_type } = req.body as { image_base64?: string; mime_type?: string };
+
+  if (!image_base64) {
+    res.status(400).json({ error: "image_base64 is required" });
+    return;
+  }
+
+  const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+  if (!GEMINI_API_KEY) {
+    res.status(503).json({ error: "GEMINI_API_KEY not configured. Add it in Secrets." });
+    return;
+  }
+
+  const prompt = `You are analysing a sports betting slip or ticket image. Extract every match/selection visible.
+Return ONLY a valid JSON array (no markdown, no explanation) where each element has:
+{
+  "teams": "Home Team vs Away Team",
+  "tip_type": "e.g. Over 2.5 Goals / Home Win / BTTS / Correct Score 2-1 / HTFT",
+  "odds": 1.85,
+  "match_date": "YYYY-MM-DD or null",
+  "match_time": "HH:MM or null"
+}
+Use your knowledge to infer match_date/match_time if not printed but you recognise the fixture.
+Output ONLY the JSON array.`;
+
+  try {
+    const geminiResp = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { text: prompt },
+              { inline_data: { mime_type: mime_type || "image/jpeg", data: image_base64 } },
+            ],
+          }],
+          generationConfig: { maxOutputTokens: 8192 },
+        }),
+      },
+    );
+
+    const data = await geminiResp.json() as Record<string, unknown>;
+    const rawText: string = (
+      (data?.candidates as Array<Record<string, unknown>>)?.[0]
+        ?.content as Record<string, unknown>
+    )?.parts as unknown as string ?? "[]";
+    const textStr = typeof rawText === "string"
+      ? rawText
+      : ((rawText as unknown as Array<Record<string, unknown>>)?.[0]?.text as string ?? "[]");
+
+    const clean = textStr.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    let matches: unknown[];
+    try {
+      matches = JSON.parse(clean);
+    } catch {
+      matches = [];
+    }
+
+    res.json({ matches });
+  } catch (err) {
+    req.log?.error?.({ err }, "Betslip scan failed");
+    res.status(500).json({ error: "Scan failed — check your Gemini API key and try again" });
+  }
+});
+
 export default router;

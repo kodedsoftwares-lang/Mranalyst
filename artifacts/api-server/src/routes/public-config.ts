@@ -13,6 +13,7 @@ const PUBLIC_KEYS = [
   "pro_price",
   "payment_link_pro_plus",
   "payment_link_pro",
+  "hero_bg_url",
 ];
 
 router.get("/", async (req: Request, res: Response): Promise<void> => {

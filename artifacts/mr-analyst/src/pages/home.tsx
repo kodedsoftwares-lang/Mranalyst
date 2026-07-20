@@ -1,8 +1,11 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Share2, Mail, ChevronDown, ChevronUp } from "lucide-react";
 import { useGetTips, useGetStats, getGetTipsQueryKey, getGetStatsQueryKey } from "@workspace/api-client-react";
 import type { TierStats } from "@workspace/api-client-react";
 import { TipCard } from "@/components/TipCard";
+
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 const LIME = "#a8ff4d";
 const GOLD_BG = "linear-gradient(135deg, #e6b800 0%, #f5d700 50%, #c89400 100%)";
@@ -153,6 +156,14 @@ export default function HomePage({ darkMode = true }: HomePageProps) {
   const [showCount, setShowCount] = useState(10);
   const [disclaimerOpen, setDisclaimerOpen] = useState(false);
 
+  const { data: pubConfig } = useQuery<Record<string, string>>({
+    queryKey: ["pub-config"],
+    queryFn: () => fetch(`${BASE}/api/config`).then(r => r.json()),
+    staleTime: 60_000,
+  });
+  const heroBgUrl = pubConfig?.hero_bg_url ?? "";
+  const supportEmail = pubConfig?.support_email || "support@mranalyst.org";
+
   const { data: tips, isLoading: tipsLoading } = useGetTips(
     { tier: activeTier },
     { query: { queryKey: getGetTipsQueryKey({ tier: activeTier }) } },
@@ -193,24 +204,50 @@ export default function HomePage({ darkMode = true }: HomePageProps) {
         paddingBottom: "80px",
       }}
     >
-      {/* Background texture */}
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          background: darkMode
-            ? "radial-gradient(ellipse at 50% 0%, rgba(30,60,20,0.4) 0%, rgba(0,0,0,0) 60%)"
-            : "none",
-          pointerEvents: "none",
-          zIndex: 0,
-        }}
-      />
+      {/* Background image + texture */}
+      {heroBgUrl ? (
+        <>
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              backgroundImage: `url(${heroBgUrl})`,
+              backgroundSize: "cover",
+              backgroundPosition: "center top",
+              opacity: 0.18,
+              pointerEvents: "none",
+              zIndex: 0,
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              background: "linear-gradient(to bottom, rgba(13,15,13,0.6) 0%, rgba(13,15,13,0.85) 100%)",
+              pointerEvents: "none",
+              zIndex: 0,
+            }}
+          />
+        </>
+      ) : (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: darkMode
+              ? "radial-gradient(ellipse at 50% 0%, rgba(30,60,20,0.4) 0%, rgba(0,0,0,0) 60%)"
+              : "none",
+            pointerEvents: "none",
+            zIndex: 0,
+          }}
+        />
+      )}
 
       <div style={{ position: "relative", zIndex: 1 }}>
         {/* Support bar */}
         <div style={{ display: "flex", gap: "8px", padding: "12px 16px 8px" }}>
           <a
-            href="mailto:support@mranalyst.org"
+            href={`mailto:${supportEmail}`}
             style={{
               flex: 1,
               display: "flex",
@@ -228,7 +265,7 @@ export default function HomePage({ darkMode = true }: HomePageProps) {
             }}
           >
             <Mail size={12} />
-            support@mranalyst.org
+            {supportEmail}
           </a>
           <button
             onClick={() => {

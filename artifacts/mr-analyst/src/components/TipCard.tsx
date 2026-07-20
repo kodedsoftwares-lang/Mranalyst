@@ -134,6 +134,7 @@ export function TipCard({ tip, darkMode = true }: TipCardProps) {
         style={{
           background: cardBg,
           border: `1px solid ${cardBorder}`,
+          borderLeft: `3px solid ${LIME}`,
           borderRadius: "12px",
           padding: "12px 14px",
         }}
@@ -209,6 +210,7 @@ export function TipCard({ tip, darkMode = true }: TipCardProps) {
       style={{
         background: cardBg,
         border: `1px solid ${cardBorder}`,
+        borderLeft: `3px solid ${LIME}`,
         borderRadius: "12px",
         padding: "12px 14px",
       }}
